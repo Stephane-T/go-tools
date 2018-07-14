@@ -52,6 +52,7 @@ func main() {
 
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage : %s pidfile command [command args]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "use %s to avoid starting a command twice in the same time\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Source of this file can be found here: https://github.com/Stephane-T/go-tools\n")
 		os.Exit(3)
 	}
