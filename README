@@ -1,0 +1,5 @@
+
+pid.go is used to ensure that you don't run the same software twice.
+
+log.go receives and write in a log file whatever it receives in stdin.
+
