@@ -6,3 +6,4 @@ log.go receives and write in a log file whatever it receives in stdin.
 notif_to_redis.go should not be useful to anybody, but feel free to
 consult as sample of working concurrent processing of files and
 interaction with Redis.
+
