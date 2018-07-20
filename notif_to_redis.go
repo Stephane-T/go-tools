@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -130,6 +131,8 @@ func process_dir(dir string, client *redis.Client) {
 
 func main() {
 
+	runtime.GOMAXPROCS(4)
+
 	var client *redis.Client
 
 	client = redis.NewClient(&redis.Options{
@@ -140,8 +143,6 @@ func main() {
 	})
 
 	var ndir []string
-
-
 
 	for {
 		ndir = load_folder()
