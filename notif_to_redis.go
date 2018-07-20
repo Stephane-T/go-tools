@@ -33,7 +33,7 @@ func load_folder() []string {
 
 	dirs, err = ioutil.ReadDir(notif1_dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Can not open %s: %v\n", notif1_dir, err)
+		fmt.Fprintf(os.Stderr, "%s notif_to_redis [CRITICAL] Can not open %s: %v\n", time.Now(), notif1_dir, err)
 		os.Exit(1)
 	}
 
@@ -72,12 +72,12 @@ func process_file(client *redis.Client, file string, dir string) {
 
 		bcmd = client.HSet(pkey, cid, num)
 		if bcmd.Err() != nil {
-			fmt.Fprintf(os.Stderr, "Can not hset %s: %v ", pkey, bcmd.Err())
+			fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not hset %s: %v\n ", time.Now(), pkey, bcmd.Err())
 		}
 
 		bcmd = client.ExpireAt(pkey, time.Now().Add(96*time.Hour))
 		if bcmd.Err() != nil {
-			fmt.Fprintf(os.Stderr, "Can not ExpireAt %v", bcmd.Err())
+			fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not ExpireAt %v\n", time.Now(), bcmd.Err())
 		}
 
 	}
@@ -86,28 +86,28 @@ func process_file(client *redis.Client, file string, dir string) {
 
 	bcmd = client.HSet(key, "CUSTOMER", customer)
 	if bcmd.Err() != nil {
-		fmt.Fprintf(os.Stderr, "Can not hset %s: %v", key, bcmd.Err())
+		fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not hset %s: %v\n", time.Now(), key, bcmd.Err())
 	}
 
 	if len(partid) > 0 {
 		bcmd = client.HSet(key, "PART", pkey)
 		if bcmd.Err() != nil {
-			fmt.Fprintf(os.Stderr, "Can not hset %v", bcmd.Err())
+			fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not hset %v\n", time.Now(), bcmd.Err())
 		}
 	}
 
 	bcmd = client.ExpireAt(key, time.Now().Add(96*time.Hour))
 	if bcmd.Err() != nil {
-		fmt.Fprintf(os.Stderr, "Can not ExpireAt %v", bcmd.Err())
+		fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not ExpireAt %v\n", time.Now(), bcmd.Err())
 	}
 
 	err := os.Rename(dir+"/"+file, trash+"/"+file)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Can not move file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not move file: %v\n", time.Now(), err)
 	}
 
-	fmt.Fprintf(os.Stdout, "Process file %s\n", file)
-	fmt.Fprintf(os.Stdout, "%s / %s / %s / %s / %s / %s / %s / %s\n", customer, bnumber, cid, p, partid, num, pkey, key)
+	fmt.Fprintf(os.Stderr, "%s notif_to_redis [INFO] Process file %s\n", time.Now(), file)
+	fmt.Fprintf(os.Stderr, "%s notif_to_redis [INFO] %s / %s / %s / %s / %s / %s / %s / %s\n", time.Now(), customer, bnumber, cid, p, partid, num, pkey, key)
 }
 
 func process_dir(dir string, client *redis.Client) {
@@ -118,7 +118,7 @@ func process_dir(dir string, client *redis.Client) {
 
 	files, err = ioutil.ReadDir(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Can not open %s as a dir: %v\n", dir, err)
+		fmt.Fprintf(os.Stderr, "%s notif_to_redis [WARNING] Can not open %s as a dir: %v\n", time.Now(), dir, err)
 	} else {
 		for _, file = range files {
 			if file.IsDir() {
@@ -131,7 +131,7 @@ func process_dir(dir string, client *redis.Client) {
 
 func main() {
 
-	runtime.GOMAXPROCS(4)
+	runtime.GOMAXPROCS(2)
 
 	var client *redis.Client
 
