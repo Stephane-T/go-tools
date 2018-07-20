@@ -179,12 +179,19 @@ func main() {
 	runtime.GOMAXPROCS(2)
 	var client *redis.Client
 	client = redis.NewClient(&redis.Options{
-		Addr:       "10.10.10.201:6379",
+	//	Addr:       "10.10.10.201:6379",
+		Addr:       "127.0.0.1:6379",
 		Password:   "", // no password set
 		DB:         0,  // use default DB
 		MaxRetries: 100000,
 	})
 
-	go notif_to_redis(client)
+	if len(os.Args) > 1 {
+		fmt.Fprintf(os.Stdout, "Test mode\n")
+		save_sql("toto")
+	} else {
+		
+		go notif_to_redis(client)
+	}
 
 }
