@@ -59,7 +59,7 @@ func process_file(client *redis.Client, file string, dir string) {
 
 	p = strings.Split(p, ".")[0]
 
-	if len(p) > 0 {
+	if len(p) >= 10 {
 
 		partid = p[0:8]
 		num = p[8:10]
