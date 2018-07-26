@@ -155,6 +155,24 @@ func submit_sm(conn net.Conn, sms sms) {
 
 	var response string
 	response = fmt.Sprintf("%08X%08X%08X%s", 16, getCommandHex("submit_sm_resp"), 0, sms.sequence_number)
+
+	dst := make([]byte, hex.EncodedLen(len([]byte(sms.body))))
+	hex.Encode(dst, []byte(sms.body))
+
+	var service_type_hex string
+	var tmp string
+	for i := 0; i < 10; i = i+2 {
+		tmp = string(dst[i:i+2])
+		if tmp == "00" {
+			break
+		}
+		service_type_hex += tmp
+	}
+	service_type := make([]byte, hex.DecodedLen(len([]byte(service_type_hex))))
+	hex.Decode(service_type,[]byte(service_type_hex))
+
+	fmt.Fprintf(os.Stderr,"Service type: %s (%s)\n", service_type, service_type_hex)
+
 	
 	fmt.Fprintf(os.Stderr, "%s\n", response)
 	brsp := make([]byte, hex.DecodedLen(len(response)))
