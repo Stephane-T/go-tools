@@ -7,3 +7,7 @@ notif_to_redis.go should not be useful to anybody, but feel free to
 consult as sample of working concurrent processing of files and
 interaction with Redis.
 
+smpp.go basic squeleton of a SMPP server, for the time being, this
+server does nothing but accept authentication, enquire_link and
+submit_sm. But feel free to use as a basis to make your own SMPP server.
+
