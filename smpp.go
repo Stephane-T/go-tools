@@ -166,8 +166,8 @@ func submit_sm(conn net.Conn, sms sms) {
 func receive(conn net.Conn) {
 	defer conn.Close()
 
-	buf := make([]byte, 1024)
 	for {
+		buf := make([]byte, 1024)
 		fmt.Fprintf(os.Stderr,"Next input\n")
 		rlen, err := conn.Read(buf)
 		dst := make([]byte, hex.EncodedLen(len(buf)))
