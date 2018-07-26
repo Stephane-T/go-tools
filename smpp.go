@@ -206,6 +206,9 @@ func receive(conn net.Conn) {
 			go enquire_link(conn, sms)
 		}
 
+		if sms.command_id == "submit_sm" {
+			go submit_sm(conn, sms)
+		}
 		
 	}
 
