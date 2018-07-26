@@ -16,7 +16,7 @@ func main() {
 }
 
 func MyRandom(num int) int {
-	source := rand.NewSource(time.Now().Unix())
+	source := rand.NewSource(time.Now().UnixNano())
 	r := rand.New(source)
 
 	return r.Intn(num)
