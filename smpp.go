@@ -151,6 +151,40 @@ func bind_transceiver(conn net.Conn, sms sms){
 	conn.Write(brsp)
 }
 
+func get_addr_ton(value string) string {
+	c := make(map[string]string)
+	c["00"] = "Unknown"
+	c["01"] = "International"
+	c["02"] = "National"
+	c["03"] = "Network Specific"
+	c["04"] = "Subscriber Number"
+	c["05"] = "Alphanumeric"
+	c["06"] = "Abbreviated"
+	if _, ok := c[value]; ok {
+		return c[value]
+	}
+	return "Error"
+}
+
+func get_addr_npi(value string) string {
+	c := make(map[string]string)
+	c["00"] = "Unknown"
+	c["01"] = "ISDN"
+	c["02"] = "Data"
+	c["04"] = "Telex"
+	c["06"] = "Land Mobile"
+	c["08"] = "National"
+	c["09"] = "Private"
+	c["10"] = "ERMES"
+	c["14"] = "Internet"
+	c["18"] = "WAP"
+	if _, ok := c[value]; ok {
+		return c[value]
+	}
+	return "Error"
+
+}
+
 func submit_sm(conn net.Conn, sms sms) {
 
 	var response string
@@ -161,7 +195,10 @@ func submit_sm(conn net.Conn, sms sms) {
 
 	var service_type_hex string
 	var tmp string
-	for i := 0; i < 10; i = i+2 {
+	var source_addr_hex string
+	i := 0
+	
+	for ; i < 10; i = i+2 {
 		tmp = string(dst[i:i+2])
 		if tmp == "00" {
 			break
@@ -170,9 +207,32 @@ func submit_sm(conn net.Conn, sms sms) {
 	}
 	service_type := make([]byte, hex.DecodedLen(len([]byte(service_type_hex))))
 	hex.Decode(service_type,[]byte(service_type_hex))
+	i = i+2
+	
+	source_addr_ton := string(dst[i:i+2])
+	source_addr_ton_name := get_addr_ton(source_addr_ton)
 
+	i = i+2
+	source_addr_npi := string(dst[i:i+2])
+	source_addr_npi_name := get_addr_npi(source_addr_npi)
+
+	i = i+2
+	
+	for ; i < 50; i = i+2 {
+		tmp = string(dst[i:i+2])
+		if tmp == "00" {
+			break
+		}
+		source_addr_hex += tmp
+	}
+	source_addr := make([]byte, hex.DecodedLen(len([]byte(source_addr_hex))))
+	hex.Decode(source_addr, []byte(source_addr_hex))
+
+	
 	fmt.Fprintf(os.Stderr,"Service type: %s (%s)\n", service_type, service_type_hex)
-
+	fmt.Fprintf(os.Stderr,"Source Addr Ton: %s (%s) \n", source_addr_ton, source_addr_ton_name)
+	fmt.Fprintf(os.Stderr,"Source Addr NPI : %s (%s)\n", source_addr_npi, source_addr_npi_name)
+	fmt.Fprintf(os.Stderr,"Source Addr: %s (%s)\n", source_addr_hex, source_addr)
 	
 	fmt.Fprintf(os.Stderr, "%s\n", response)
 	brsp := make([]byte, hex.DecodedLen(len(response)))
