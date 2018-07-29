@@ -196,6 +196,7 @@ func submit_sm(conn net.Conn, sms sms) {
 	var service_type_hex string
 	var tmp string
 	var source_addr_hex string
+	var dest_addr_hex string
 	i := 0
 	
 	for ; i < 10; i = i+2 {
@@ -227,12 +228,35 @@ func submit_sm(conn net.Conn, sms sms) {
 	}
 	source_addr := make([]byte, hex.DecodedLen(len([]byte(source_addr_hex))))
 	hex.Decode(source_addr, []byte(source_addr_hex))
+	i = i+2
+
+	dest_addr_ton := string(dst[i:i+2])
+	dest_addr_ton_name := get_addr_ton(dest_addr_ton)
+	i = i+2
+
+	dest_addr_npi := string(dst[i:i+2])
+	dest_addr_npi_name := get_addr_npi(dest_addr_npi)
+	i = i+2
+	
+	for ; i < 50; i = i+2 {
+		tmp = string(dst[i:i+2])
+		if tmp == "00" {
+			break
+		}
+		dest_addr_hex += tmp
+	}
+	dest_addr := make([]byte, hex.DecodedLen(len([]byte(dest_addr_hex))))
+	hex.Decode(dest_addr, []byte(dest_addr_hex))
+	i = i+2
 
 	
 	fmt.Fprintf(os.Stderr,"Service type: %s (%s)\n", service_type, service_type_hex)
 	fmt.Fprintf(os.Stderr,"Source Addr Ton: %s (%s) \n", source_addr_ton, source_addr_ton_name)
 	fmt.Fprintf(os.Stderr,"Source Addr NPI : %s (%s)\n", source_addr_npi, source_addr_npi_name)
-	fmt.Fprintf(os.Stderr,"Source Addr: %s (%s)\n", source_addr_hex, source_addr)
+	fmt.Fprintf(os.Stderr,"Source Addr: %s (%s)\n", source_addr, source_addr_hex)
+	fmt.Fprintf(os.Stderr,"Dest Addr Ton: %s (%s)\n", dest_addr_ton, dest_addr_ton_name)
+	fmt.Fprintf(os.Stderr,"Dest Addr NPI: %s (%s)\n", dest_addr_npi, dest_addr_npi_name)
+	fmt.Fprintf(os.Stderr,"Dest Addr: %s (%s)\n", dest_addr, dest_addr_hex)
 	
 	fmt.Fprintf(os.Stderr, "%s\n", response)
 	brsp := make([]byte, hex.DecodedLen(len(response)))
@@ -245,10 +269,30 @@ func receive(conn net.Conn) {
 	defer conn.Close()
 
 	for {
-		buf := make([]byte, 1024)
 		fmt.Fprintf(os.Stderr,"Next input\n")
-		rlen, err := conn.Read(buf)
+
+		var sms sms
+
+		buf := make([]byte, 4)
+
+		_, err := conn.Read(buf)
+		
 		dst := make([]byte, hex.EncodedLen(len(buf)))
+		hex.Encode(dst, buf)
+
+		fmt.Fprintf(os.Stderr, "Hex value (size): %s\n", string(dst))
+		sms.size_hex = string(dst)[0:8]
+		sms.size = hex2int(sms.size_hex)
+
+		fmt.Fprintf(os.Stderr, "Size: %s (%d)\n", sms.size_hex, sms.size)
+		if sms.size == 0 {
+			continue
+		}
+
+		buf2 := make([]byte, sms.size -4)
+
+		_, err = conn.Read(buf2)
+		dst = make([]byte, hex.EncodedLen(len(buf2)))
 
 		fmt.Fprintf(os.Stderr, "%s\n", string(dst))
 
@@ -256,20 +300,19 @@ func receive(conn net.Conn) {
 			fmt.Fprintf(os.Stderr, "Error in read: %v\n", err)
 			break
 		}
-		fmt.Fprintf(os.Stderr, " Received: %s (%d)\n", string(buf), rlen)
-		hex.Encode(dst, buf)
+	
+	//	fmt.Fprintf(os.Stderr, " Received: %s (%d)\n", string(buf2), rlen)
+		hex.Encode(dst, buf2)
 		fmt.Fprintf(os.Stderr, "Hex value: %s\n", string(dst))
 
-		sms := sms{sequence_number : string(dst)[24:32]}
-		sms.size_hex = string(dst)[0:8]
-		sms.command_id_hex = string(dst)[8:16]
-		sms.command_status = string(dst)[16:24]
-		sms.size = hex2int(sms.size_hex)
+		sms.sequence_number = string(dst)[16:24]
+		sms.command_id_hex = string(dst)[0:8]
+		sms.command_status = string(dst)[8:16]
 		sms.command_id = getCommandName(sms.command_id_hex)
-		sms.pdu = buf
-		sms.body = string(buf[16:sms.size])
+		sms.pdu = buf2
+		sms.body = string(buf2[12:])
 
-		fmt.Fprintf(os.Stderr, "Size: %s (%d)\n", sms.size_hex, sms.size)
+
 		fmt.Fprintf(os.Stderr, "Command: %s (%s)\n", sms.command_id_hex, sms.command_id)
 		fmt.Fprintf(os.Stderr, "Status: %s\n", sms.command_status)
 		fmt.Fprintf(os.Stderr, "Sequence: %s\n", sms.sequence_number)
@@ -287,8 +330,9 @@ func receive(conn net.Conn) {
 		if sms.command_id == "submit_sm" {
 			go submit_sm(conn, sms)
 		}
-		
-	}
 
+	}
 }
+
+
 
