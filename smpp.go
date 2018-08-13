@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"math/rand"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const host = ""
@@ -14,38 +16,64 @@ const port = "3000"
 const proto = "tcp"
 
 var sequence_number int
+var message_id int
 
 type pdu struct {
-	size uint64
-	command_id string
-	command_status string
+	size            uint64
+	command_id      string
+	command_status  string
 	sequence_number string
-	pdu []byte
-	body string
+	pdu             []byte
+	body            string
 	// SMS
-	service_type string
-	source_addr_ton string
-	source_addr_npi string
-	source_addr string
-	dest_addr_ton string
-	dest_addr_npi string
-	dest_addr string
-	esm_class string
-	protocol_id string
-	priority_flag string
-	delivery_time string
-	validity_period string
-	registered_delivery string
+	service_type            string
+	source_addr_ton         string
+	source_addr_npi         string
+	source_addr             string
+	dest_addr_ton           string
+	dest_addr_npi           string
+	dest_addr               string
+	esm_class               string
+	protocol_id             string
+	priority_flag           string
+	delivery_time           string
+	validity_period         string
+	registered_delivery     string
 	replace_if_present_flag string
-	data_coding string
-	sm_default_msg_id string
-	sm_length uint64
-	sm string
+	data_coding             string
+	sm_default_msg_id       string
+	sm_length               uint64
+	sm                      string
 }
 
-func get_sequence_number () string {
+func get_sequence_number() string {
 	sequence_number++
-	return fmt.Sprintf("%08d",sequence_number)
+	return fmt.Sprintf("%08d", sequence_number)
+}
+
+func MyRandom(num int) int {
+	source := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(source)
+
+	return r.Intn(num)
+}
+
+func get_message_id() string {
+	var r string
+	a := []string{"a", "b", "c", "d", "e", "f", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	for i := 0; i < 8; i++ {
+		r += a[l_rand(len(a))]
+	}
+	dst := make([]byte, hex.EncodedLen(len(r)))
+	hex.Encode(dst, []byte(r))
+	r = fmt.Sprintf("%s%s", string(dst), "00")
+	return r
+}
+
+func l_rand(num int) int {
+	source := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(source)
+	return r.Intn(num)
 }
 
 func main() {
@@ -74,7 +102,7 @@ func hex2int(hexStr string) uint64 {
 	return uint64(result)
 }
 
-func getCommandName (command_id string) string {
+func getCommandName(command_id string) string {
 	c := make(map[uint64]string)
 	c[hex2int("0x80000000")] = "generic_nack"
 	c[hex2int("0x00000001")] = "bind_receiver"
@@ -105,14 +133,14 @@ func getCommandName (command_id string) string {
 	c[hex2int("0x00000102")] = "alert_notification"
 	c[hex2int("0x00000103")] = "data_sm"
 	c[hex2int("0x80000103")] = "data_sm_resp"
-	
-	if _, ok := c[hex2int(command_id)] ; ok {
+
+	if _, ok := c[hex2int(command_id)]; ok {
 		return c[hex2int(command_id)]
 	}
 	return ""
 }
 
-func getCommandHex (commandName string) uint64 {
+func getCommandHex(commandName string) uint64 {
 
 	c := make(map[string]string)
 
@@ -145,7 +173,7 @@ func getCommandHex (commandName string) uint64 {
 	c["alert_notification"] = "0x00000102"
 	c["data_sm"] = "0x00000103"
 	c["data_sm_resp"] = "0x80000103"
-	
+
 	if _, ok := c[commandName]; ok {
 		return hex2int(c[commandName])
 	}
@@ -153,23 +181,23 @@ func getCommandHex (commandName string) uint64 {
 }
 
 func enquire_link(conn net.Conn, sms pdu) {
-	var response string;
+	var response string
 	response = fmt.Sprintf("%08X%08X%08X%s", 16, getCommandHex("enquire_link_resp"), 0, sms.sequence_number)
-	
+
 	fmt.Fprintf(os.Stderr, "%s\n", response)
 	brsp := make([]byte, hex.DecodedLen(len(response)))
-	hex.Decode(brsp,[]byte(response))
+	hex.Decode(brsp, []byte(response))
 	conn.Write(brsp)
 }
 
-func bind_transceiver(conn net.Conn, sms pdu){
-	
+func bind_transceiver(conn net.Conn, sms pdu) {
+
 	var response string
 	response = fmt.Sprintf("%08X%08X%08X%s", 16, getCommandHex("bind_transceiver_resp"), 0, sms.sequence_number)
-	
+
 	fmt.Fprintf(os.Stderr, "%s\n", response)
 	brsp := make([]byte, hex.DecodedLen(len(response)))
-	hex.Decode(brsp,[]byte(response))
+	hex.Decode(brsp, []byte(response))
 	conn.Write(brsp)
 }
 
@@ -207,7 +235,6 @@ func get_addr_npi(value string) string {
 
 }
 
-
 func HexToBin(hex string) (string, error) {
 	ui, err := strconv.ParseUint(hex, 16, 64)
 	if err != nil {
@@ -237,15 +264,10 @@ func get_data_coding(dc string) string {
 		return c[dc]
 	}
 	return "Reserved"
-	
-	
 
 }
 
 func submit_sm(conn net.Conn, sms pdu) {
-
-	var response string
-	response = fmt.Sprintf("%08X%08X%08X%s", 16, getCommandHex("submit_sm_resp"), 0, sms.sequence_number)
 
 	dst := make([]byte, hex.EncodedLen(len([]byte(sms.body))))
 	hex.Encode(dst, []byte(sms.body))
@@ -254,28 +276,9 @@ func submit_sm(conn net.Conn, sms pdu) {
 	var tmp string
 	var tmp_b []byte
 	i := 0
-	
-	for ; i < 10; i = i+2 {
-		tmp = string(dst[i:i+2])
-		if tmp == "00" {
-			break
-		}
-		tmp_sum += tmp
-	}
-	tmp_b = make([]byte, hex.DecodedLen(len([]byte(tmp_sum))))
-	hex.Decode(tmp_b,[]byte(tmp_sum))
-	sms.service_type = string(tmp_b)
-	tmp_sum = ""
-	i = i+2
-	
-	sms.source_addr_ton = string(dst[i:i+2])
-	i = i+2
 
-	sms.source_addr_npi = string(dst[i:i+2])
-	i = i+2
-	
-	for ; i < 50; i = i+2 {
-		tmp = string(dst[i:i+2])
+	for ; i < 10; i = i + 2 {
+		tmp = string(dst[i : i+2])
 		if tmp == "00" {
 			break
 		}
@@ -283,19 +286,38 @@ func submit_sm(conn net.Conn, sms pdu) {
 	}
 	tmp_b = make([]byte, hex.DecodedLen(len([]byte(tmp_sum))))
 	hex.Decode(tmp_b, []byte(tmp_sum))
-	fmt.Fprintf(os.Stderr,"!!!%s\n",tmp_sum)
+	sms.service_type = string(tmp_b)
+	tmp_sum = ""
+	i = i + 2
+
+	sms.source_addr_ton = string(dst[i : i+2])
+	i = i + 2
+
+	sms.source_addr_npi = string(dst[i : i+2])
+	i = i + 2
+
+	for ; i < 50; i = i + 2 {
+		tmp = string(dst[i : i+2])
+		if tmp == "00" {
+			break
+		}
+		tmp_sum += tmp
+	}
+	tmp_b = make([]byte, hex.DecodedLen(len([]byte(tmp_sum))))
+	hex.Decode(tmp_b, []byte(tmp_sum))
+	fmt.Fprintf(os.Stderr, "!!!%s\n", tmp_sum)
 	sms.source_addr = string(tmp_b)
 	tmp_sum = ""
-	i = i+2
+	i = i + 2
 
-	sms.dest_addr_ton = string(dst[i:i+2])
-	i = i+2
+	sms.dest_addr_ton = string(dst[i : i+2])
+	i = i + 2
 
-	sms.dest_addr_npi = string(dst[i:i+2])
-	i = i+2
-	
-	for ; i < 50; i = i+2 {
-		tmp = string(dst[i:i+2])
+	sms.dest_addr_npi = string(dst[i : i+2])
+	i = i + 2
+
+	for ; i < 50; i = i + 2 {
+		tmp = string(dst[i : i+2])
 		if tmp == "00" {
 			break
 		}
@@ -305,19 +327,19 @@ func submit_sm(conn net.Conn, sms pdu) {
 	hex.Decode(tmp_b, []byte(tmp_sum))
 	sms.dest_addr = string(tmp_b)
 	tmp_sum = ""
-	i = i+2
+	i = i + 2
 
-	sms.esm_class = string(dst[i:i+2]) 
-	i = i+2
+	sms.esm_class = string(dst[i : i+2])
+	i = i + 2
 
-	sms.protocol_id = string(dst[i:i+2])
-	i = i+2
+	sms.protocol_id = string(dst[i : i+2])
+	i = i + 2
 
-	sms.priority_flag = string(dst[i:i+2])
-	i = i+2
-	
-	for ; i < 50; i = i+2 {
-		tmp = string(dst[i:i+2])
+	sms.priority_flag = string(dst[i : i+2])
+	i = i + 2
+
+	for ; i < 50; i = i + 2 {
+		tmp = string(dst[i : i+2])
 		if tmp == "00" {
 			break
 		}
@@ -327,10 +349,10 @@ func submit_sm(conn net.Conn, sms pdu) {
 	hex.Decode(tmp_b, []byte(tmp_sum))
 	sms.delivery_time = string(tmp_b)
 	tmp_sum = ""
-	i = i+2
-	
-	for ; i < 50; i = i+2 {
-		tmp = string(dst[i:i+2])
+	i = i + 2
+
+	for ; i < 50; i = i + 2 {
+		tmp = string(dst[i : i+2])
 		if tmp == "00" {
 			break
 		}
@@ -340,58 +362,74 @@ func submit_sm(conn net.Conn, sms pdu) {
 	hex.Decode(tmp_b, []byte(tmp_sum))
 	sms.validity_period = string(tmp_b)
 	tmp_sum = ""
-	i = i+2
+	i = i + 2
 
-	sms.registered_delivery = string(dst[i:i+2])
-	i = i+2
+	sms.registered_delivery = string(dst[i : i+2])
+	i = i + 2
 
-	sms.replace_if_present_flag = string(dst[i:i+2])
-	i = i+2
+	sms.replace_if_present_flag = string(dst[i : i+2])
+	i = i + 2
 
-	sms.data_coding = string(dst[i:i+2])
-	i = i+2
+	sms.data_coding = string(dst[i : i+2])
+	i = i + 2
 
-	sms.sm_default_msg_id = string(dst[i:i+2])
-	i = i+2
+	sms.sm_default_msg_id = string(dst[i : i+2])
+	i = i + 2
 
-	sms.sm_length = hex2int(string(dst[i:i+2]))
-	fmt.Fprintf(os.Stderr,"---%s\n", string(dst[i:i+2]))
+	sms.sm_length = hex2int(string(dst[i : i+2]))
+	fmt.Fprintf(os.Stderr, "---%s\n", string(dst[i:i+2]))
 
-	sms.sm = string(sms.body[i/2:(i/2)+int(sms.sm_length)+1])
+	sms.sm = string(sms.body[i/2 : (i/2)+int(sms.sm_length)+1])
 
-	fmt.Fprintf(os.Stderr,"Service type: %s\n", sms.service_type)
-	fmt.Fprintf(os.Stderr,"Source Addr Ton: %s (%s)\n", get_addr_ton(sms.source_addr_ton), sms.source_addr_ton)
-	fmt.Fprintf(os.Stderr,"Source Addr NPI : %s (%s)\n", get_addr_npi(sms.source_addr_npi), sms.source_addr_npi)
-	fmt.Fprintf(os.Stderr,"Source Addr: %s\n", sms.source_addr)
-	fmt.Fprintf(os.Stderr,"Dest Addr Ton: %s (%s)\n", sms.dest_addr_ton, get_addr_ton(sms.dest_addr_ton))
-	fmt.Fprintf(os.Stderr,"Dest Addr NPI: %s (%s)\n", sms.dest_addr_npi, get_addr_npi(sms.dest_addr_npi))
-	fmt.Fprintf(os.Stderr,"Dest Addr: %s\n", sms.dest_addr)
-	fmt.Fprintf(os.Stderr,"ESM Class: %s\n", sms.esm_class)
-	fmt.Fprintf(os.Stderr,"Protocol ID: %s\n", sms.protocol_id)
-	fmt.Fprintf(os.Stderr,"Priority flag: %s\n", sms.priority_flag)
-	fmt.Fprintf(os.Stderr,"Delivery time: %s\n", sms.delivery_time)
-	fmt.Fprintf(os.Stderr,"Validity Period: %s\n", sms.validity_period)
-	fmt.Fprintf(os.Stderr,"Registered Delivery: %s\n", sms.registered_delivery)
-	fmt.Fprintf(os.Stderr,"Replace if present: %s\n", sms.replace_if_present_flag)
-	fmt.Fprintf(os.Stderr,"Data coding: %s (%s)\n", sms.data_coding, get_data_coding(sms.data_coding))
-	fmt.Fprintf(os.Stderr,"SM Default MSG ID: %s\n", sms.sm_default_msg_id)
-	fmt.Fprintf(os.Stderr,"SM Length: %d\n", sms.sm_length)
-	fmt.Fprintf(os.Stderr,"POS %d , %d\n", i, i/2)
-	fmt.Fprintf(os.Stderr,"SM : -%s-\n", sms.sm)
-	
-	fmt.Fprintf(os.Stderr, "%s\n", response)
-	brsp := make([]byte, hex.DecodedLen(len(response)))
-	hex.Decode(brsp,[]byte(response))
-	fmt.Fprintf(os.Stderr, "-%s-\n", brsp)
-	conn.Write(brsp)
-	send_delivery_sm(conn, sms)
+	fmt.Fprintf(os.Stderr, "Service type: %s\n", sms.service_type)
+	fmt.Fprintf(os.Stderr, "Source Addr Ton: %s (%s)\n", get_addr_ton(sms.source_addr_ton), sms.source_addr_ton)
+	fmt.Fprintf(os.Stderr, "Source Addr NPI : %s (%s)\n", get_addr_npi(sms.source_addr_npi), sms.source_addr_npi)
+	fmt.Fprintf(os.Stderr, "Source Addr: %s\n", sms.source_addr)
+	fmt.Fprintf(os.Stderr, "Dest Addr Ton: %s (%s)\n", sms.dest_addr_ton, get_addr_ton(sms.dest_addr_ton))
+	fmt.Fprintf(os.Stderr, "Dest Addr NPI: %s (%s)\n", sms.dest_addr_npi, get_addr_npi(sms.dest_addr_npi))
+	fmt.Fprintf(os.Stderr, "Dest Addr: %s\n", sms.dest_addr)
+	fmt.Fprintf(os.Stderr, "ESM Class: %s\n", sms.esm_class)
+	fmt.Fprintf(os.Stderr, "Protocol ID: %s\n", sms.protocol_id)
+	fmt.Fprintf(os.Stderr, "Priority flag: %s\n", sms.priority_flag)
+	fmt.Fprintf(os.Stderr, "Delivery time: %s\n", sms.delivery_time)
+	fmt.Fprintf(os.Stderr, "Validity Period: %s\n", sms.validity_period)
+	fmt.Fprintf(os.Stderr, "Registered Delivery: %s\n", sms.registered_delivery)
+	fmt.Fprintf(os.Stderr, "Replace if present: %s\n", sms.replace_if_present_flag)
+	fmt.Fprintf(os.Stderr, "Data coding: %s (%s)\n", sms.data_coding, get_data_coding(sms.data_coding))
+	fmt.Fprintf(os.Stderr, "SM Default MSG ID: %s\n", sms.sm_default_msg_id)
+	fmt.Fprintf(os.Stderr, "SM Length: %d\n", sms.sm_length)
+	fmt.Fprintf(os.Stderr, "POS %d , %d\n", i, i/2)
+	fmt.Fprintf(os.Stderr, "SM : -%s-\n", sms.sm)
+
+	response := fmt.Sprintf("%08X%08X%s%s", getCommandHex("submit_sm_resp"), 0, sms.sequence_number, get_message_id())
+
+	send_frame(conn, response)
+
+	//	send_delivery_sm(conn, sms)
 }
 
-func send_delivery_sm (conn net.Conn, sms pdu) {
+func send_frame(conn net.Conn, frame string) {
+	size := fmt.Sprintf("%08X", (len(frame)/2)+4)
+	frame = fmt.Sprintf("%s%s", size, frame)
+
+	fmt.Fprintf(os.Stderr, "%s\n", frame)
+
+
+	brsp := make([]byte, hex.DecodedLen(len(frame)))
+	hex.Decode(brsp, []byte(frame))
+	i, err := conn.Write(brsp)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error sending response : %v\n", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "Send %d to remote ESME\n", i)
+	}
+}
+
+func send_delivery_sm(conn net.Conn, sms pdu) {
 	sequence_number := get_sequence_number()
-	command_id := fmt.Sprintf("%08X",getCommandHex("deliver_sm"))
-	command_status := fmt.Sprintf("%08X",0)
-	
+	command_id := fmt.Sprintf("%08X", getCommandHex("deliver_sm"))
+	command_status := fmt.Sprintf("%08X", 0)
+
 	tmp_b := make([]byte, hex.EncodedLen(len([]byte(sms.service_type))))
 	hex.Encode(tmp_b, []byte(sms.service_type))
 	service_type := string(tmp_b) + "00"
@@ -408,69 +446,69 @@ func send_delivery_sm (conn net.Conn, sms pdu) {
 	validity_period := "00"
 	replace_if_present := "00"
 	sm_default_msg_id := "00"
-	sm_length := fmt.Sprintf("%02X",sms.sm_length)
+	sm_length := fmt.Sprintf("%02X", sms.sm_length)
 
 	tmp_b = make([]byte, hex.EncodedLen(len([]byte(sms.sm))))
 	hex.Encode(tmp_b, []byte(sms.sm))
 	sm := string(tmp_b)
 
 	var fr string
-	
-	fmt.Fprintf(os.Stderr,"Send Delivery SM\n")
-	fmt.Fprintf(os.Stderr,"Sequence number: %s\n", sequence_number)
+
+	fmt.Fprintf(os.Stderr, "Send Delivery SM\n")
+	fmt.Fprintf(os.Stderr, "Sequence number: %s\n", sequence_number)
 	fr = sequence_number
-	fmt.Fprintf(os.Stderr,"Command ID: %s\n", command_id)
+	fmt.Fprintf(os.Stderr, "Command ID: %s\n", command_id)
 	fr += command_id
-	fmt.Fprintf(os.Stderr,"Command status: %s\n", command_status)
+	fmt.Fprintf(os.Stderr, "Command status: %s\n", command_status)
 	fr += command_status
-	fmt.Fprintf(os.Stderr,"Service type: %s\n", service_type)
+	fmt.Fprintf(os.Stderr, "Service type: %s\n", service_type)
 	fr += service_type
-	fmt.Fprintf(os.Stderr,"Source Addr Ton: %s\n", sms.source_addr_ton)
+	fmt.Fprintf(os.Stderr, "Source Addr Ton: %s\n", sms.source_addr_ton)
 	fr += sms.source_addr_ton
-	fmt.Fprintf(os.Stderr,"Source Addr NPI: %s\n", sms.source_addr_npi)
+	fmt.Fprintf(os.Stderr, "Source Addr NPI: %s\n", sms.source_addr_npi)
 	fr += sms.source_addr_npi
-	fmt.Fprintf(os.Stderr,"Source Addr: %s\n", source_addr)
+	fmt.Fprintf(os.Stderr, "Source Addr: %s\n", source_addr)
 	fr += source_addr
-	fmt.Fprintf(os.Stderr,"Dest Addr Ton: %s\n", sms.dest_addr_ton)
+	fmt.Fprintf(os.Stderr, "Dest Addr Ton: %s\n", sms.dest_addr_ton)
 	fr += sms.dest_addr_ton
-	fmt.Fprintf(os.Stderr,"Dest Addr NPI: %s\n", sms.dest_addr_npi)
+	fmt.Fprintf(os.Stderr, "Dest Addr NPI: %s\n", sms.dest_addr_npi)
 	fr += sms.dest_addr_npi
-	fmt.Fprintf(os.Stderr,"Dest Addr: %s\n", dest_addr)
+	fmt.Fprintf(os.Stderr, "Dest Addr: %s\n", dest_addr)
 	fr += dest_addr
-	fmt.Fprintf(os.Stderr,"ESM Class: %s\n", sms.esm_class)
+	fmt.Fprintf(os.Stderr, "ESM Class: %s\n", sms.esm_class)
 	fr += sms.esm_class
-	fmt.Fprintf(os.Stderr,"Protocol ID: %s\n", sms.protocol_id)
+	fmt.Fprintf(os.Stderr, "Protocol ID: %s\n", sms.protocol_id)
 	fr += sms.protocol_id
-	fmt.Fprintf(os.Stderr,"Priority Flag: %s\n", sms.priority_flag)
+	fmt.Fprintf(os.Stderr, "Priority Flag: %s\n", sms.priority_flag)
 	fr += sms.priority_flag
-	fmt.Fprintf(os.Stderr,"Delivery Time: %s\n", delivery_time)
+	fmt.Fprintf(os.Stderr, "Delivery Time: %s\n", delivery_time)
 	fr += delivery_time
-	fmt.Fprintf(os.Stderr,"Validity Period: %s\n", validity_period)
+	fmt.Fprintf(os.Stderr, "Validity Period: %s\n", validity_period)
 	fr += validity_period
-	fmt.Fprintf(os.Stderr,"Registered Delivery: %s\n", sms.registered_delivery)
+	fmt.Fprintf(os.Stderr, "Registered Delivery: %s\n", sms.registered_delivery)
 	fr += sms.registered_delivery
-	fmt.Fprintf(os.Stderr,"Replace if present: %s\n", replace_if_present)
+	fmt.Fprintf(os.Stderr, "Replace if present: %s\n", replace_if_present)
 	fr += replace_if_present
-	fmt.Fprintf(os.Stderr,"Data Coding: %s\n", sms.data_coding)
+	fmt.Fprintf(os.Stderr, "Data Coding: %s\n", sms.data_coding)
 	fr += sms.data_coding
-	fmt.Fprintf(os.Stderr,"SM Default Msg Id: %s\n", sm_default_msg_id)
+	fmt.Fprintf(os.Stderr, "SM Default Msg Id: %s\n", sm_default_msg_id)
 	fr += sm_default_msg_id
-	fmt.Fprintf(os.Stderr,"SM Length: %s\n", sm_length)
+	fmt.Fprintf(os.Stderr, "SM Length: %s\n", sm_length)
 	fr += sm_length
-	fmt.Fprintf(os.Stderr,"SM: %s\n", sm)
+	fmt.Fprintf(os.Stderr, "SM: %s\n", sm)
 	fr += sm
-	fmt.Fprintf(os.Stderr,"Frame: %s\n", fr)
-	fr_length := fmt.Sprintf("%08X", (len(fr) + 8) /2)
-	fmt.Fprintf(os.Stderr,"Frame length: %s\n", fr_length)
+	fmt.Fprintf(os.Stderr, "Frame: %s\n", fr)
+	fr_length := fmt.Sprintf("%08X", (len(fr)+8)/2)
+	fmt.Fprintf(os.Stderr, "Frame length: %s\n", fr_length)
 	fr = fr_length + fr
 
 	brsp := make([]byte, hex.DecodedLen(len(fr)))
-	hex.Decode(brsp,[]byte(fr))
+	hex.Decode(brsp, []byte(fr))
 	conn.Write(brsp)
 
 }
 
-func get_pdu_size (conn net.Conn) uint64 {
+func get_pdu_size(conn net.Conn) uint64 {
 	buf := make([]byte, 4)
 	_, err := conn.Read(buf)
 	if err != nil {
@@ -478,16 +516,17 @@ func get_pdu_size (conn net.Conn) uint64 {
 		return 0
 	}
 	dst := make([]byte, hex.EncodedLen(len(buf)))
-	hex.Encode(dst,buf)
+	hex.Encode(dst, buf)
 	size_hex := string(dst)[0:8]
+	fmt.Fprintf(os.Stderr, "Size (HEX): %s\n", size_hex)
 	return hex2int(size_hex)
 }
 
-func get_pdu (conn net.Conn, size uint64) ([]byte,[]byte) {
-	buf := make([]byte, size -4)
+func get_pdu(conn net.Conn, size uint64) ([]byte, []byte) {
+	buf := make([]byte, size-4)
 
 	_, err := conn.Read(buf)
-	
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading from socket: %v\n", err)
 		return []byte("Error"), []byte("Error")
@@ -498,7 +537,6 @@ func get_pdu (conn net.Conn, size uint64) ([]byte,[]byte) {
 
 	return dst, buf
 }
-	
 
 func receive(conn net.Conn) {
 	defer conn.Close()
@@ -507,10 +545,10 @@ func receive(conn net.Conn) {
 	for {
 		var sms pdu
 
-		fmt.Fprintf(os.Stderr,"Next input\n")
+		fmt.Fprintf(os.Stderr, "Next input\n")
 
 		sms.size = get_pdu_size(conn)
-		
+
 		fmt.Fprintf(os.Stderr, "Size: %d\n", sms.size)
 
 		if sms.size == 0 || sms.size > 1024 {
@@ -526,7 +564,7 @@ func receive(conn net.Conn) {
 		if string(dst) == "Error" {
 			break
 		}
-		
+
 		sms.sequence_number = string(dst)[16:24]
 		sms.command_status = string(dst)[8:16]
 		sms.command_id = getCommandName(string(dst)[0:8])
@@ -538,7 +576,7 @@ func receive(conn net.Conn) {
 		fmt.Fprintf(os.Stderr, "Sequence: %s\n", sms.sequence_number)
 
 		if sms.command_id == "bind_transceiver" {
-			go bind_transceiver(conn,sms)
+			go bind_transceiver(conn, sms)
 		}
 
 		if sms.command_id == "enquire_link" {
@@ -551,6 +589,3 @@ func receive(conn net.Conn) {
 
 	}
 }
-
-
-
