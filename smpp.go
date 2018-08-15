@@ -181,24 +181,25 @@ func getCommandHex(commandName string) uint64 {
 }
 
 func enquire_link(conn net.Conn, sms pdu) {
-	var response string
-	response = fmt.Sprintf("%08X%08X%08X%s", 16, getCommandHex("enquire_link_resp"), 0, sms.sequence_number)
-
+	response := fmt.Sprintf("%08X%08X%s", getCommandHex("enquire_link_resp"), 0, sms.sequence_number)
 	fmt.Fprintf(os.Stderr, "%s\n", response)
-	brsp := make([]byte, hex.DecodedLen(len(response)))
-	hex.Decode(brsp, []byte(response))
-	conn.Write(brsp)
+	send_frame(conn, response)
+}
+
+func get_system_id () string {
+	system_id := "SMSC"
+	bs := make([]byte, hex.EncodedLen(len(system_id)))
+	hex.Encode(bs, []byte(system_id))
+	return string(bs) + "00"
 }
 
 func bind_transceiver(conn net.Conn, sms pdu) {
 
 	var response string
-	response = fmt.Sprintf("%08X%08X%08X%s", 16, getCommandHex("bind_transceiver_resp"), 0, sms.sequence_number)
+	response = fmt.Sprintf("%08X%08X%s%s", getCommandHex("bind_transceiver_resp"), 0, sms.sequence_number, get_system_id())
 
 	fmt.Fprintf(os.Stderr, "%s\n", response)
-	brsp := make([]byte, hex.DecodedLen(len(response)))
-	hex.Decode(brsp, []byte(response))
-	conn.Write(brsp)
+	send_frame(conn, response)
 }
 
 func get_addr_ton(value string) string {
