@@ -177,6 +177,7 @@ func getCommandHex(commandName string) uint64 {
 	if _, ok := c[commandName]; ok {
 		return hex2int(c[commandName])
 	}
+	
 	return 0
 }
 
@@ -379,8 +380,9 @@ func submit_sm(conn net.Conn, sms pdu) {
 
 	sms.sm_length = hex2int(string(dst[i : i+2]))
 	fmt.Fprintf(os.Stderr, "---%s\n", string(dst[i:i+2]))
-
-	sms.sm = string(sms.body[i/2 : (i/2)+int(sms.sm_length)+1])
+	i = i + 2
+	
+	sms.sm = string(sms.body[i/2 : (i/2)+int(sms.sm_length)])
 
 	fmt.Fprintf(os.Stderr, "Service type: %s\n", sms.service_type)
 	fmt.Fprintf(os.Stderr, "Source Addr Ton: %s (%s)\n", get_addr_ton(sms.source_addr_ton), sms.source_addr_ton)
@@ -406,7 +408,7 @@ func submit_sm(conn net.Conn, sms pdu) {
 
 	send_frame(conn, response)
 
-	//	send_delivery_sm(conn, sms)
+	send_delivery_sm(conn, sms)
 }
 
 func send_frame(conn net.Conn, frame string) {
@@ -447,19 +449,17 @@ func send_delivery_sm(conn net.Conn, sms pdu) {
 	validity_period := "00"
 	replace_if_present := "00"
 	sm_default_msg_id := "00"
-	sm_length := fmt.Sprintf("%02X", sms.sm_length)
+	sm_length := fmt.Sprintf("%X", sms.sm_length)
 
 	tmp_b = make([]byte, hex.EncodedLen(len([]byte(sms.sm))))
 	hex.Encode(tmp_b, []byte(sms.sm))
 	sm := string(tmp_b)
 
-	var fr string
-
 	fmt.Fprintf(os.Stderr, "Send Delivery SM\n")
-	fmt.Fprintf(os.Stderr, "Sequence number: %s\n", sequence_number)
-	fr = sequence_number
 	fmt.Fprintf(os.Stderr, "Command ID: %s\n", command_id)
-	fr += command_id
+	fr := command_id
+	fmt.Fprintf(os.Stderr, "Sequence number: %s\n", sequence_number)
+	fr += sequence_number
 	fmt.Fprintf(os.Stderr, "Command status: %s\n", command_status)
 	fr += command_status
 	fmt.Fprintf(os.Stderr, "Service type: %s\n", service_type)
@@ -499,13 +499,8 @@ func send_delivery_sm(conn net.Conn, sms pdu) {
 	fmt.Fprintf(os.Stderr, "SM: %s\n", sm)
 	fr += sm
 	fmt.Fprintf(os.Stderr, "Frame: %s\n", fr)
-	fr_length := fmt.Sprintf("%08X", (len(fr)+8)/2)
-	fmt.Fprintf(os.Stderr, "Frame length: %s\n", fr_length)
-	fr = fr_length + fr
 
-	brsp := make([]byte, hex.DecodedLen(len(fr)))
-	hex.Decode(brsp, []byte(fr))
-	conn.Write(brsp)
+	send_frame(conn, fr)
 
 }
 
