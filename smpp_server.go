@@ -3,20 +3,26 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const host = ""
-const port = "3000"
-const proto = "tcp"
-
-var sequence_number int
-var message_id int
+type account struct {
+	system_id string
+	password  string
+	ip        string
+	window    int
+	received  string
+	spool     string
+	notif     string
+	prefix    string
+}
 
 type pdu struct {
 	size            uint64
@@ -46,163 +52,90 @@ type pdu struct {
 	sm                      string
 }
 
-func get_sequence_number() string {
-	sequence_number++
-	return fmt.Sprintf("%08d", sequence_number)
-}
+var sequence_number int
+var message_id int
 
-func MyRandom(num int) int {
-	source := rand.NewSource(time.Now().UnixNano())
-	r := rand.New(source)
 
-	return r.Intn(num)
-}
+func read_conf(file string) map[string]string {
+	m := make(map[string]string)
+	var prefix string
 
-func get_message_id() string {
-	var r string
-	a := []string{"a", "b", "c", "d", "e", "f", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
-	for i := 0; i < 8; i++ {
-		r += a[l_rand(len(a))]
+	fmt.Fprintf(os.Stderr, "Read configuration from %s\n", file)
+
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can not read %s: %v\n", file, err)
+		os.Exit(2)
 	}
-	dst := make([]byte, hex.EncodedLen(len(r)))
-	hex.Encode(dst, []byte(r))
-	r = fmt.Sprintf("%s%s", string(dst), "00")
+
+	conf := strings.Split(string(b), "\n")
+
+	for _, i := range conf {
+
+		i = strings.Replace(i, " ", "", -1)
+
+		match, _ := regexp.Match("^\\[.*\\]$", []byte(i))
+
+		if match {
+			prefix = i
+			continue
+		} else {
+			t := strings.Split(i, "=")
+
+			if cap(t) != 2 {
+				continue
+			}
+
+			if len(prefix) == 0 {
+				m[t[0]] = t[1]
+			} else {
+				m[prefix+"."+t[0]] = t[1]
+			}
+		}
+	}
+	return m
+}
+
+func account_list(m map[string]string) map[string]account {
+	r := make(map[string]account)
+	list_account := strings.Split(m["accounts"], ",")
+	for _, i := range list_account {
+		prefix := "[" + i + "]."
+		a := account{system_id: m[prefix+"system_id"]}
+		a.password = m[prefix+"password"]
+		a.ip = m[prefix+"ip"]
+		w, err := strconv.Atoi(m[prefix+"window"])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Window parameter shoud be Integer type for %s\n", prefix)
+			w = 10
+		}
+		a.window = w
+		a.received = m[prefix+"received"]
+		a.spool = m[prefix+"spool"]
+		a.notif = m[prefix+"notif"]
+		a.prefix = prefix
+		r[m[prefix+"system_id"]] = a
+	}
 	return r
 }
 
-func l_rand(num int) int {
-	source := rand.NewSource(time.Now().UnixNano())
-	r := rand.New(source)
-	return r.Intn(num)
-}
+func check_ip(m map[string]account, account string, ip string) bool {
+	var r bool = false
+	a := m[account]
+	list_ip := strings.Split(a.ip, ",")
 
-func main() {
+	for _, hostname := range list_ip {
+		lip, err := net.LookupHost(hostname)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Can not resolve %s: %v\n", hostname, err)
+			continue
+		}
 
-	esme()
-	//	l, err := net.Listen(proto, host+":"+port)
-	//	if err != nil {
-	//		fmt.Fprintf(os.Stderr, "Can not listen TCP: %v\n", err)
-	//		os.Exit(1)
-	//	}
-	//	defer l.Close()
-	//	fmt.Fprintf(os.Stderr, "TCP Listening\n")
-	//	for {
-	//		conn, err := l.Accept()
-	//		if err != nil {
-	//			fmt.Fprintf(os.Stderr, "Error in Accept: %v\n", err)
-	//			os.Exit(1)
-	//		}
-	//		go receive(conn)
-	//	}
-
-}
-
-func hex2int(hexStr string) uint64 {
-	cleaned := strings.Replace(hexStr, "0x", "", -1)
-	result, _ := strconv.ParseUint(cleaned, 16, 64)
-	return uint64(result)
-}
-
-func getCommandName(command_id string) string {
-	c := make(map[uint64]string)
-	c[hex2int("0x80000000")] = "generic_nack"
-	c[hex2int("0x00000001")] = "bind_receiver"
-	c[hex2int("0x80000001")] = "bind_receiver_resp"
-	c[hex2int("0x00000002")] = "bind_transmitter"
-	c[hex2int("0x80000002")] = "bind_transmitter_resp"
-	c[hex2int("0x00000003")] = "query_sm"
-	c[hex2int("0x80000003")] = "query_sm_resp"
-	c[hex2int("0x00000009")] = "bind_transceiver"
-	c[hex2int("0x80000009")] = "bind_transceiver_resp"
-	c[hex2int("0x00000015")] = "enquire_link"
-	c[hex2int("0x80000015")] = "enquire_link_resp"
-	c[hex2int("0x00000003")] = "query_sm"
-	c[hex2int("0x80000003")] = "query_sm_resp"
-	c[hex2int("0x00000004")] = "submit_sm"
-	c[hex2int("0x80000004")] = "submit_sm_resp"
-	c[hex2int("0x00000005")] = "deliver_sm"
-	c[hex2int("0x80000005")] = "deliver_sm_resp"
-	c[hex2int("0x00000006")] = "unbind"
-	c[hex2int("0x80000006")] = "unbind_resp"
-	c[hex2int("0x00000007")] = "replace_sm"
-	c[hex2int("0x80000007")] = "replace_sm_resp"
-	c[hex2int("0x00000008")] = "cancel_sm"
-	c[hex2int("0x80000008")] = "cancel_sm_resp"
-	c[hex2int("0x0000000B")] = "outbind"
-	c[hex2int("0x00000021")] = "submit_multi"
-	c[hex2int("0x80000021")] = "submit_multi_resp"
-	c[hex2int("0x00000102")] = "alert_notification"
-	c[hex2int("0x00000103")] = "data_sm"
-	c[hex2int("0x80000103")] = "data_sm_resp"
-
-	if _, ok := c[hex2int(command_id)]; ok {
-		return c[hex2int(command_id)]
+		if lip[0] == ip {
+			r = true
+		}
 	}
-	return ""
-}
-
-func getCommandHex(commandName string) uint64 {
-
-	c := make(map[string]string)
-
-	c["generic_nack"] = "0x80000000"
-	c["bind_receiver"] = "0x00000001"
-	c["bind_receiver_resp"] = "0x80000001"
-	c["bind_transmitter"] = "0x00000002"
-	c["bind_transmitter_resp"] = "0x80000002"
-	c["query_sm"] = "0x00000003"
-	c["query_sm_resp"] = "0x80000003"
-	c["bind_transceiver"] = "0x00000009"
-	c["bind_transceiver_resp"] = "0x80000009"
-	c["enquire_link"] = "0x00000015"
-	c["enquire_link_resp"] = "0x80000015"
-	c["query_sm"] = "0x00000003"
-	c["query_sm_resp"] = "0x80000003"
-	c["submit_sm"] = "0x00000004"
-	c["submit_sm_resp"] = "0x80000004"
-	c["deliver_sm"] = "0x00000005"
-	c["deliver_sm_resp"] = "0x80000005"
-	c["unbind"] = "0x00000006"
-	c["unbind_resp"] = "0x80000006"
-	c["replace_sm"] = "0x00000007"
-	c["replace_sm_resp"] = "0x80000007"
-	c["cancel_sm"] = "0x00000008"
-	c["cancel_sm_resp"] = "0x80000008"
-	c["outbind"] = "0x0000000B"
-	c["submit_multi"] = "0x00000021"
-	c["submit_multi_resp"] = "0x80000021"
-	c["alert_notification"] = "0x00000102"
-	c["data_sm"] = "0x00000103"
-	c["data_sm_resp"] = "0x80000103"
-
-	if _, ok := c[commandName]; ok {
-		return hex2int(c[commandName])
-	}
-
-	return 0
-}
-
-func enquire_link(conn net.Conn, sms pdu) {
-	response := fmt.Sprintf("%08X%08X%s", getCommandHex("enquire_link_resp"), 0, sms.sequence_number)
-	fmt.Fprintf(os.Stderr, "%s\n", response)
-	send_frame(conn, response)
-}
-
-func bind_transceiver_resp(conn net.Conn, sms pdu) {
-	fmt.Fprintf(os.Stderr, "Received bind_transceiver_resp\n")
-}
-
-func unbind(conn net.Conn, sms pdu) {
-	response := fmt.Sprintf("%08X%08X%s", getCommandHex("unbind_resp"), 0, sms.sequence_number)
-	send_frame(conn, response)
-	fmt.Fprintf(os.Stderr, "%s\n", "Received unbind, will close connection in 5 seconds")
-	time.Sleep(5 * time.Second)
-	conn.Close()
-}
-
-func generic_nack(conn net.Conn, sms pdu) {
-	response := fmt.Sprintf("%08X%08X%s", getCommandHex("generic_nack"), hex2int("0x00000003"), sms.sequence_number)
-	send_frame(conn, response)
+	return r
 }
 
 func get_system_id() string {
@@ -212,13 +145,46 @@ func get_system_id() string {
 	return string(bs) + "00"
 }
 
-func bind_transceiver(conn net.Conn, sms pdu) {
+func main() {
+	if cap(os.Args) != 2 {
+		fmt.Fprintf(os.Stderr, "Usage: %s configuration_file\n", os.Args[0])
+		os.Exit(1)
+	}
+	config := read_conf(os.Args[1])
+//	accounts := account_list(config)
 
-	var response string
-	response = fmt.Sprintf("%08X%08X%s%s", getCommandHex("bind_transceiver_resp"), 0, sms.sequence_number, get_system_id())
+	fmt.Fprintf(os.Stderr, "Listen on port %s\n", config["port"])
+	l, err := net.Listen("tcp", ":"+config["port"])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Can not listen TCP: %v\n", err)
+		os.Exit(1)
+	}
+	defer l.Close()
+	fmt.Fprintf(os.Stderr, "TCP Listening\n")
 
-	fmt.Fprintf(os.Stderr, "%s\n", response)
-	send_frame(conn, response)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error in Accept: %v\n", err)
+			os.Exit(1)
+		}
+		go receive(conn)
+	}
+
+}
+
+func get_pdu_size(conn net.Conn) uint64 {
+	buf := make([]byte, 4)
+	_, err := conn.Read(buf)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading on socket: %v\n", err)
+		return 0
+	}
+	dst := make([]byte, hex.EncodedLen(len(buf)))
+	hex.Encode(dst, buf)
+	size_hex := string(dst)[0:8]
+	fmt.Fprintf(os.Stderr, "Size (HEX): %s\n", size_hex)
+	return hex2int(size_hex)
 }
 
 func get_addr_ton(value string) string {
@@ -285,6 +251,68 @@ func get_data_coding(dc string) string {
 	}
 	return "Reserved"
 
+}
+
+func bind_transceiver(conn net.Conn, sms pdu) {
+
+	dst := make([]byte, hex.EncodedLen(len([]byte(sms.body))))
+	hex.Encode(dst, []byte(sms.body))
+
+	var tmp_sum string
+	var tmp string
+	var tmp_b []byte
+	i := 0
+	
+
+	for ; i < 32; i = i + 2 {
+		tmp = string(dst[i : i+2])
+		if tmp == "00" {
+			break
+		}
+		tmp_sum += tmp
+	}
+	tmp_b = make([]byte, hex.DecodedLen(len([]byte(tmp_sum))))
+	hex.Decode(tmp_b, []byte(tmp_sum))
+	system_id := string(tmp_b)
+	tmp_sum = ""
+	i = i + 2
+
+	for ; i < 32; i = i + 2 {
+		tmp = string(dst[i : i+2])
+		if tmp == "00" {
+			break
+		}
+		tmp_sum += tmp
+	}
+	tmp_b = make([]byte, hex.DecodedLen(len([]byte(tmp_sum))))
+	hex.Decode(tmp_b, []byte(tmp_sum))
+	password := string(tmp_b)
+	tmp_sum = ""
+	i = i + 2
+
+
+	for ; i < 32; i = i + 2 {
+		tmp = string(dst[i : i+2])
+		if tmp == "00" {
+			break
+		}
+		tmp_sum += tmp
+	}
+	tmp_b = make([]byte, hex.DecodedLen(len([]byte(tmp_sum))))
+	hex.Decode(tmp_b, []byte(tmp_sum))
+	system_type := string(tmp_b)
+	tmp_sum = ""
+	i = i + 2
+	
+	fmt.Fprintf(os.Stderr, "System ID: %s\n", system_id)
+	fmt.Fprintf(os.Stderr, "Password: %s\n", password)
+	fmt.Fprintf(os.Stderr, "System Type: %s\n", system_type)
+	
+	var response string
+	response = fmt.Sprintf("%08X%08X%s%s", getCommandHex("bind_transceiver_resp"), 0, sms.sequence_number, get_system_id())
+
+	fmt.Fprintf(os.Stderr, "%s\n", response)
+	send_frame(conn, response)
 }
 
 func submit_sm(conn net.Conn, sms pdu) {
@@ -429,6 +457,36 @@ func submit_sm(conn net.Conn, sms pdu) {
 	send_delivery_sm(conn, sms)
 }
 
+func get_sequence_number() string {
+	sequence_number++
+	return fmt.Sprintf("%08d", sequence_number)
+}
+
+func MyRandom(num int) int {
+	source := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(source)
+
+	return r.Intn(num)
+}
+
+func get_message_id() string {
+	var r string
+	a := []string{"a", "b", "c", "d", "e", "f", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}
+	for i := 0; i < 8; i++ {
+		r += a[l_rand(len(a))]
+	}
+	dst := make([]byte, hex.EncodedLen(len(r)))
+	hex.Encode(dst, []byte(r))
+	r = fmt.Sprintf("%s%s", string(dst), "00")
+	return r
+}
+
+func l_rand(num int) int {
+	source := rand.NewSource(time.Now().UnixNano())
+	r := rand.New(source)
+	return r.Intn(num)
+}
+
 func send_frame(conn net.Conn, frame string) {
 	size := fmt.Sprintf("%08X", (len(frame)/2)+4)
 	frame = fmt.Sprintf("%s%s", size, frame)
@@ -521,20 +579,6 @@ func send_delivery_sm(conn net.Conn, sms pdu) {
 
 }
 
-func get_pdu_size(conn net.Conn) uint64 {
-	buf := make([]byte, 4)
-	_, err := conn.Read(buf)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading on socket: %v\n", err)
-		return 0
-	}
-	dst := make([]byte, hex.EncodedLen(len(buf)))
-	hex.Encode(dst, buf)
-	size_hex := string(dst)[0:8]
-	fmt.Fprintf(os.Stderr, "Size (HEX): %s\n", size_hex)
-	return hex2int(size_hex)
-}
-
 func get_pdu(conn net.Conn, size uint64) ([]byte, []byte) {
 	buf := make([]byte, size-4)
 
@@ -551,55 +595,112 @@ func get_pdu(conn net.Conn, size uint64) ([]byte, []byte) {
 	return dst, buf
 }
 
-func esme() {
-	hostname := "54.228.194.91"
-	port := "11000"
-	systemid := "testameex"
-	password := "GP40fiN6"
-	conn, err := net.Dial("tcp", hostname+":"+port)
+func hex2int(hexStr string) uint64 {
+	cleaned := strings.Replace(hexStr, "0x", "", -1)
+	result, _ := strconv.ParseUint(cleaned, 16, 64)
+	return uint64(result)
+}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Can not connect to %s:%s : %v\n", hostname, port, err)
-	} else {
-		go receive(conn)
+func getCommandName(command_id string) string {
+	c := make(map[uint64]string)
+	c[hex2int("0x80000000")] = "generic_nack"
+	c[hex2int("0x00000001")] = "bind_receiver"
+	c[hex2int("0x80000001")] = "bind_receiver_resp"
+	c[hex2int("0x00000002")] = "bind_transmitter"
+	c[hex2int("0x80000002")] = "bind_transmitter_resp"
+	c[hex2int("0x00000003")] = "query_sm"
+	c[hex2int("0x80000003")] = "query_sm_resp"
+	c[hex2int("0x00000009")] = "bind_transceiver"
+	c[hex2int("0x80000009")] = "bind_transceiver_resp"
+	c[hex2int("0x00000015")] = "enquire_link"
+	c[hex2int("0x80000015")] = "enquire_link_resp"
+	c[hex2int("0x00000003")] = "query_sm"
+	c[hex2int("0x80000003")] = "query_sm_resp"
+	c[hex2int("0x00000004")] = "submit_sm"
+	c[hex2int("0x80000004")] = "submit_sm_resp"
+	c[hex2int("0x00000005")] = "deliver_sm"
+	c[hex2int("0x80000005")] = "deliver_sm_resp"
+	c[hex2int("0x00000006")] = "unbind"
+	c[hex2int("0x80000006")] = "unbind_resp"
+	c[hex2int("0x00000007")] = "replace_sm"
+	c[hex2int("0x80000007")] = "replace_sm_resp"
+	c[hex2int("0x00000008")] = "cancel_sm"
+	c[hex2int("0x80000008")] = "cancel_sm_resp"
+	c[hex2int("0x0000000B")] = "outbind"
+	c[hex2int("0x00000021")] = "submit_multi"
+	c[hex2int("0x80000021")] = "submit_multi_resp"
+	c[hex2int("0x00000102")] = "alert_notification"
+	c[hex2int("0x00000103")] = "data_sm"
+	c[hex2int("0x80000103")] = "data_sm_resp"
 
-		fmt.Fprintf(os.Stderr, "Connected to %s:%s\n", hostname, port)
-		command_id := fmt.Sprintf("%08X", getCommandHex("bind_transceiver"))
-		command_status := fmt.Sprintf("%08X", 0)
-		sequence_number := get_sequence_number()
+	if _, ok := c[hex2int(command_id)]; ok {
+		return c[hex2int(command_id)]
+	}
+	return ""
+}
 
-		dst := make([]byte, hex.EncodedLen(len(systemid)))
-		hex.Encode(dst, []byte(systemid))
-		hex_system_id := string(dst) + "00"
+func getCommandHex(commandName string) uint64 {
 
-		dst = make([]byte, hex.EncodedLen(len(password)))
-		hex.Encode(dst, []byte(password))
-		hex_password := string(dst) + "00"
+	c := make(map[string]string)
 
-		system_type := "00"
-		interface_version := "34"
-		addr_ton := "01"
-		addr_npi := "01"
-		address_range := "00"
+	c["generic_nack"] = "0x80000000"
+	c["bind_receiver"] = "0x00000001"
+	c["bind_receiver_resp"] = "0x80000001"
+	c["bind_transmitter"] = "0x00000002"
+	c["bind_transmitter_resp"] = "0x80000002"
+	c["query_sm"] = "0x00000003"
+	c["query_sm_resp"] = "0x80000003"
+	c["bind_transceiver"] = "0x00000009"
+	c["bind_transceiver_resp"] = "0x80000009"
+	c["enquire_link"] = "0x00000015"
+	c["enquire_link_resp"] = "0x80000015"
+	c["query_sm"] = "0x00000003"
+	c["query_sm_resp"] = "0x80000003"
+	c["submit_sm"] = "0x00000004"
+	c["submit_sm_resp"] = "0x80000004"
+	c["deliver_sm"] = "0x00000005"
+	c["deliver_sm_resp"] = "0x80000005"
+	c["unbind"] = "0x00000006"
+	c["unbind_resp"] = "0x80000006"
+	c["replace_sm"] = "0x00000007"
+	c["replace_sm_resp"] = "0x80000007"
+	c["cancel_sm"] = "0x00000008"
+	c["cancel_sm_resp"] = "0x80000008"
+	c["outbind"] = "0x0000000B"
+	c["submit_multi"] = "0x00000021"
+	c["submit_multi_resp"] = "0x80000021"
+	c["alert_notification"] = "0x00000102"
+	c["data_sm"] = "0x00000103"
+	c["data_sm_resp"] = "0x80000103"
 
-		fmt.Fprintf(os.Stderr, "ESME Command ID: %s\n", command_id)
-		fmt.Fprintf(os.Stderr, "ESME Command Status: %s\n", command_status)
-		fmt.Fprintf(os.Stderr, "ESME Sequence Number: %s\n", sequence_number)
-		fmt.Fprintf(os.Stderr, "ESME System ID: %s\n", hex_system_id)
-		fmt.Fprintf(os.Stderr, "ESME Passowrd : %s\n", hex_password)
-		fmt.Fprintf(os.Stderr, "ESME System Type: %s\n", system_type)
-		fmt.Fprintf(os.Stderr, "ESME Interface Version: %s\n", interface_version)
-		fmt.Fprintf(os.Stderr, "ESME Addr Ton: %s\n", addr_ton)
-		fmt.Fprintf(os.Stderr, "ESME Addr Npi: %s\n", addr_npi)
-		fmt.Fprintf(os.Stderr, "ESME Address Range: %s\n", address_range)
-
-		pdu := command_id + command_status + sequence_number + hex_system_id + hex_password + system_type + interface_version + addr_ton + addr_npi + address_range
-		send_frame(conn, pdu)
-
-		time.Sleep(30 * time.Second)
-
+	if _, ok := c[commandName]; ok {
+		return hex2int(c[commandName])
 	}
 
+	return 0
+}
+
+func enquire_link(conn net.Conn, sms pdu) {
+	response := fmt.Sprintf("%08X%08X%s", getCommandHex("enquire_link_resp"), 0, sms.sequence_number)
+	fmt.Fprintf(os.Stderr, "%s\n", response)
+	send_frame(conn, response)
+}
+
+func bind_transceiver_resp(conn net.Conn, sms pdu) {
+	fmt.Fprintf(os.Stderr, "Received bind_transceiver_resp\n")
+}
+
+func unbind(conn net.Conn, sms pdu) {
+	response := fmt.Sprintf("%08X%08X%s", getCommandHex("unbind_resp"), 0, sms.sequence_number)
+	send_frame(conn, response)
+	fmt.Fprintf(os.Stderr, "%s\n", "Received unbind, will close connection in 5 seconds")
+	time.Sleep(5 * time.Second)
+	conn.Close()
+}
+
+func generic_nack(conn net.Conn, sms pdu) {
+	response := fmt.Sprintf("%08X%08X%s", getCommandHex("generic_nack"), hex2int("0x00000003"), sms.sequence_number)
+	send_frame(conn, response)
 }
 
 func receive(conn net.Conn) {
