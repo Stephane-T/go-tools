@@ -1,4 +1,9 @@
 
+
+This repo contains my pathetic attempt to learn GO. I learnt just enough to not like GO.
+
+Some of this code is still live today. Does it still compile ? 
+
 pid.go is used to ensure that you don't run the same software twice.
 
 log.go receives and write in a log file whatever it receives in stdin.
@@ -9,5 +14,5 @@ interaction with Redis.
 
 smpp.go basic squeleton of a SMPP server, for the time being, this
 server does nothing but accept authentication, enquire_link and
-submit_sm. But feel free to use as a basis to make your own SMPP server.
+submit_sm. 
 
